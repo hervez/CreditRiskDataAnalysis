@@ -1,200 +1,144 @@
 library(dplyr)
 library(stringr)
-library(tidyverse)
 library(ggplot2)
+library(gridExtra)
 
+# Graphical analysis parameters ------------------------------------------------
+clean_columns_names <- c(
+  "loan_amnt" = "Loan amount", 
+  "int_rate" = "Interest rate", 
+  "grade" = "Grade", 
+  "sub_grade" = "Sub-grade", 
+  "annual_inc" = "Annual Income", 
+  "loan_status" = "Loan status", 
+  "purpose" = "Purpose", 
+  "us_state" = "U.S. state", 
+  "open_acc" = "Open account", 
+  "total_acc" = "Total account", 
+  "total_pymnt" = "Total payment", 
+  "years_of_employment" = "Years of employment", 
+  "out_prncp" = "Out principal", 
+  "loan_per_income" = "Loan per income"
+)
 
+# data_loan Loading ------------------------------------------------------------
 
-#load the dataset
-Data <- read.csv("data/loan.csv")
+data_loan <- read.csv("data/loan.csv")
 
+# get a first impression 
+summary(data_loan)
 
-#add a new variable
-Data <- mutate(Data,
-               loan_per_income = loan_amnt / annual_inc)
+# data_loan filtering-----------------------------------------------------------
 
+# focusing only on fully paid and default
+data_loan <- filter(data_loan,
+                    loan_status == "Default" | loan_status == "Fully Paid" )
 
-#check if each person has only 1 loan and conversely. If yes we can get rid of one of them
-Data |>
+# check if each person has only 1 loan and conversely. If yes we can get rid of 
+# one of them
+data_loan |>
   summarize (number_id=n_distinct(id),number_member_id=n_distinct(member_id))
 
+# select only important variables
+data_loan <- select(data_loan,id,loan_amnt,funded_amnt,term,int_rate,grade,sub_grade,
+                    annual_inc,loan_status,purpose,addr_state,open_acc,total_acc,
+                    total_pymnt,emp_length)
 
-#select only important variables
-Data <- select(Data,id,loan_amnt,funded_amnt,term,int_rate,grade,sub_grade,annual_inc,loan_status,purpose,addr_state,open_acc,total_acc,total_pymnt,emp_length,out_prncp, loan_per_income)
 
+# counting number of cells without any value for the variable year of employment
+data_loan |>
+  select(id,emp_length)|>
+  group_by(emp_length)|>
+  summarize( n_distinct(id))|> 
+  ungroup()
 
-#rename variables
-Data <-Data %>%
+# there are 7443 n/a that we want to get rid of
+data_loan <- filter(data_loan, data_loan$emp_length != "n/a")
+
+# check remaining data 
+summary(data_loan)
+
+# Adding new entries -----------------------------------------------------------
+
+# add a new variable
+data_loan <- mutate(data_loan,
+                    loan_per_income = loan_amnt / annual_inc)
+
+# add a column on wether the state is republican or democrat 
+rep <-c("TX","OK","AR","LA","MS","AL","FL","TN","SC","KY","NC","WV","MT","ID",
+        "WY","UT","AK","ND","SD","IA","NE","KS","MO","IN","OH")
+dem <-c("VA","GA","DE","MD","HI","AZ","NM","CO","NV","CA","OR","WA","MN","ME",
+        "NH","MA","VT","RI","CT","NY","PA","NJ","DC","IL","MI","WI")
+
+data_loan$politics[data_loan$addr_state %in% rep] <- "REP"
+data_loan$politics[data_loan$addr_state %in% dem] <- "DEM"
+
+# Cosmetic changes -------------------------------------------------------------
+
+# rename variables
+data_loan <-data_loan %>%
   rename("us_state"="addr_state",
-         "years_of_employment"="emp_length")
-
-
-#focusing only on fully paid and default
-Data <- filter(Data, loan_status == "Default" | loan_status == "Fully Paid" )
-
-
-#changing default with 0 and fully paid with 1
-Data$loan_status <- ifelse(Data$loan_status=="Fully Paid", 1,0)
-
-
-#ordering                             ???????????????????
-Data<- Data[order(Data$annual_inc),]
-
-
-#counting number of cells without any value for the variable year of employment
-Data |>
-  select(id,years_of_employment)|>
-  group_by(years_of_employment)|>
-  summarize( n_distinct(id))      
-  
-
-#there are 7443 n/a that we want to get rid of
-Data <- filter(Data, Data$years_of_employment != "n/a")
-
-
-#changing ids
-Data["id"]<-c(str_c("id_",c(1:nrow(Data))))
-
-
-#computing quantile for loan per income
-quantile <- quantile(Data$loan_per_income, probs=c(0.2,0.4,0.6,0.8))
-
-
-#Let's visualize the quantiles
-quantile
-
-
-#we create 5 groups, equal in number, in the variable loan per income
-Data$loan_per_income <- cut(Data$loan_per_income, breaks = c(0,0.1032258,0.1583333,0.2150538,0.2938626 ,max(Data$annual_inc)), labels = c(str_c("cat_loan_per_inc_",c(1:5))),include.lowest = TRUE)
-
-
-#we create a plot with the number of default by category of loan per income
-ggplot(data=Data, aes(x = loan_per_income)) +
-  geom_bar(data = subset(Data, loan_status == 0), stat = "count") +
-  labs(x = "les 5 ratios de loan per income", y = "Default number") +
-  ggtitle("the higher the loan per income the most likly default")
-
-
-#create quantile for total account
-quantile1 <- quantile(Data$total_acc, probs=(c(1:9))*0.1)
-
-
-#lets vizualize the quantiles
-quantile1
-
-
-#we create 5 groups, equal in number, in the variable loan per income
-Data$total_acc <- cut(Data$total_acc, breaks = c(0,11,15,18,21,24,27,30,34,41,max(Data$total_acc)), labels = c(str_c("cat_",c(1:10))),include.lowest = TRUE)
-
-
-#we create a plot with the number of default by category of total account
-ggplot(data=Data, aes(x = total_acc)) +
-  geom_bar(data = subset(Data, loan_status == 0), stat = "count") +
-  labs(x = "10 categories of total account", y = "Default number") +
-  ggtitle("c'est contre intuitif et la moyenne est une droite donc je pense quon peut se passer de cette variable")+
-  coord_flip()#je pense qu'il y a un effet non linéaire
-
-#total account is not useful so we remove it from the dataset
-#Data <- Data %>%
-#  select(-total_acc)
-
-
-#Let's look at the variable term and check the number of possible terms
-Data|>
-  group_by(term)|>
-  summarize(number_of_idss <- n_distinct(id))
-
-
-#since there exists only two terms we can change 36 - 0 et 60 - 1
-Data$term <- ifelse(Data$term==" 60 months", 1,0)
-
-
-#lets find out if the variable purpose is important
-Data_summary <- Data %>%
-  group_by(purpose) %>%
-  summarise(percentage_Default = sum(loan_status == 0) / n())
-
-
-#let's plot it
-ggplot(Data_summary, aes(x = purpose, y = percentage_Default)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  geom_text(aes(label = scales::percent(percentage_Default)), vjust = 0, hjust=-0.2, size = 3.2) +
-  labs(x = "Purpose", y = "Percentage of Default") +
-  ggtitle("Some categories of purpose are less exposed to Default")+
-  coord_flip()
-
-
-#create quantile for int_rate
-quantile2 <- quantile(Data$total_acc, probs=(c(1:9))*0.1)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Data|>
-    group_by(purpose)|>
-    summarize(number_of_idss <- n_distinct(id))
-
-
-Data|>
-  group_by(loan_status)|>
-  summarize(number_of_idss <- n_distinct(id))
-
-200351 / (200351+1148)
-
-mean(Data$loan_status)
-
-
-
-#je vais m'occuper de years of employment
-
-Data$loan_status <- ifelse(Data$loan_status=="Fully Paid", 1,0)
-
-#je vais moccuper de purpose
-
-ggplot(data=Data, aes(x = purpose)) +
-  geom_bar(data = subset(Data, loan_status == 0), stat = "count")
-
-ggplot(data=Data, aes(x = purpose)) +
-  geom_bar(data = subset(Data, loan_status == 1), stat = "count")
-
-
-
-
-
-ggplot(data=Data, aes(x = years_of_employment)) +
-  geom_bar(data = subset(Data, loan_status == 0), stat = "count")
-
-Data |>
-  group_by(years_of_employment)|>
-  summarize (numberidd = n_distinct(id))
-
-
-
-#creation of quatile for out_prncp
-quantile2 <- quantile(Data$out_prncp, probs=0.9)
-
-
-#Let's see the quantile
-quantile2
-
-Data |>
-  summarize (number_id=n_distinct(out_prncp))
-
-
-ggplot(data=Data, aes(x = out_prncp)) +
-  geom_bar( stat = "count") 
-
-
+         "years_employment"="emp_length")
+
+# changing ids
+data_loan["id"]<-c(str_c("id_",c(1:nrow(data_loan))))
+
+#We want the interest rates values to be percentages
+data_loan$int_rate = data_loan$int_rate / 100
+
+# check remaining data 
+summary(data_loan)
+
+# Factorisation ---------------------------------------------------------------
+
+# factorize the dataframe
+# get a list of categorical data 
+factor_names <- c("loan_status", "term", "grade", "sub_grade", "purpose", 
+                  "years_employment", "us_state", "politics")
+
+# check that the factor are coherent 
+for (factor_name in factor_names){
+  unique_values <- unique(data_loan[, factor_name])
+  print(unique_values)
+  print(length(unique_values))
+}
+
+# factorize them 
+for (factor_name in factor_names){
+  data_loan[, factor_name] <- factor(data_loan[, factor_name])
+}
+
+# Extreme values clean-up ------------------------------------------------------
+
+# Define the vector of continuous values 
+cont_data_names <- c("loan_amnt", "int_rate", "annual_inc", "total_pymnt", 
+                     "loan_per_income", "open_acc", "total_acc")
+
+# Get a representation of the extremes values with some boxplots 
+for (cont_data_name in cont_data_names){
+  plt <- ggplot(data_loan, aes_string(x = 1, y = cont_data_name )) + 
+    geom_boxplot() +
+    labs(x = "", 
+         y = clean_columns_names[cont_data_name])
+  print(cont_data_name)
+  print(plt)
+}
+
+# filter the 99% percentile 
+for (cont_data_name in cont_data_names){
+  threshold <- quantile(data_loan[[cont_data_name]], probs = 0.99)
+  print(cont_data_name)
+  print(threshold)
+  extreme_data <- filter(data_loan, !!sym(cont_data_name) >= threshold)
+  data_loan <- filter(data_loan, !!sym(cont_data_name) < threshold)
+}
+
+# Check the new boxplots 
+for (cont_data_name in cont_data_names){
+  plt <- ggplot(data_loan, aes_string(x = 1, y = cont_data_name )) + 
+    geom_boxplot() +
+    labs(x = "", 
+         y = clean_columns_names[cont_data_name])
+  print(cont_data_name)
+  print(plt)
+}

@@ -1,0 +1,355 @@
+---
+title: "Data Tyding"
+author: "Herve Zumbach, Valentin Frezza" 
+date: 2023-10-20
+---
+
+```{r}
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(usmap)
+library(glmnet)
+
+clean_columns_names <- c(
+  "loan_amnt" = "Loan amount", 
+  "int_rate" = "Interest rate", 
+  "grade" = "Grade", 
+  "sub_grade" = "Sub-grade", 
+  "annual_inc" = "Annual Income", 
+  "loan_status" = "Loan status", 
+  "purpose" = "Purpose", 
+  "us_state" = "U.S. state", 
+  "open_acc" = "Open account", 
+  "total_acc" = "Total account", 
+  "total_pymnt" = "Total payment", 
+  "years_of_employment" = "Years of employment", 
+  "out_prncp" = "Out principal", 
+  "loan_per_income" = "Loan per income"
+)
+```
+
+## First impression
+
+Our data frame is a 
+
+```{r}
+data_loan <- read.csv("../data/loan.csv")
+kable(summary(data_loan))
+```
+
+## First filter 
+
+To simplify computation and make the data set manageable, we only looked at the fully paid or defaulted loan making the dataset go from 8'000'000 entries to 200'000. 
+In addition, we also reduced the columns to 15 to only keep pertinent entries. 
+
+```{r}
+data_loan <- filter(data_loan,
+                    loan_status == "Default" | loan_status == "Fully Paid" )
+
+
+data_loan <- select(data_loan,id,loan_amnt,funded_amnt,term,int_rate,grade,sub_grade,
+                    annual_inc,loan_status,purpose,addr_state,open_acc,total_acc,
+                    total_pymnt,emp_length)
+
+kable(summary(data_loan))
+```
+
+## Second Filter 
+
+We removed all the entries with no value for the number of years of employment: 
+```{r}
+# counting number of cells without any value for the variable year of employment
+data_loan |>
+  select(id,emp_length)|>
+  group_by(emp_length)|>
+  summarize( n_distinct(id))|> 
+  ungroup()
+
+# there are 7443 n/a that we want to get rid of
+data_loan <- filter(data_loan, data_loan$emp_length != "n/a")
+```
+
+## Adding new entries 
+
+We added the columns politics and loan_per_income
+
+```{r}
+data_loan <- mutate(data_loan,
+                    loan_per_income = loan_amnt / annual_inc)
+
+rep <-c("TX","OK","AR","LA","MS","AL","FL","TN","SC","KY","NC","WV","MT","ID",
+        "WY","UT","AK","ND","SD","IA","NE","KS","MO","IN","OH")
+dem <-c("VA","GA","DE","MD","HI","AZ","NM","CO","NV","CA","OR","WA","MN","ME",
+        "NH","MA","VT","RI","CT","NY","PA","NJ","DC","IL","MI","WI")
+
+data_loan$politics[data_loan$addr_state %in% rep] <- "REP"
+data_loan$politics[data_loan$addr_state %in% dem] <- "DEM"
+```
+
+## Cosmetic Changes 
+
+We change a few variables names for easier handling, renamed the ids and made the interests rate actual percentage: 
+```{r}
+# rename variables
+data_loan <-data_loan %>%
+  rename("us_state"="addr_state",
+         "years_employment"="emp_length")
+
+# changing ids
+data_loan["id"]<-c(str_c("id_",c(1:nrow(data_loan))))
+
+#We want the interest rates values to be percentages
+data_loan$int_rate = data_loan$int_rate / 100
+```
+
+## Factorisation 
+
+We factorized all the categorical data columns: 
+```{r}
+# get a list of categorical data 
+factor_names <- c("loan_status", "term", "grade", "sub_grade", "purpose", 
+                  "years_employment", "us_state", "politics")
+
+# check that the factor are coherent 
+for (factor_name in factor_names){
+  unique_values <- unique(data_loan[, factor_name])
+  print(unique_values)
+  print(length(unique_values))
+}
+
+# factorize them 
+for (factor_name in factor_names){
+  data_loan[, factor_name] <- factor(data_loan[, factor_name])
+}
+```
+
+## Extreme Values Handling    
+
+A few of the values in our data set are too extreme for proper analysis, so we decided to filter them. 
+
+## Extreme Values visualization
+
+To do so, we began be visualizing them with boxplots: 
+
+```{r}
+# Define the vector of continuous values 
+cont_data_names <- c("loan_amnt", "int_rate", "annual_inc", "total_pymnt", 
+                     "loan_per_income", "open_acc", "total_acc")
+
+# Get a representation of the extremes values with some boxplots 
+for (cont_data_name in cont_data_names){
+  plt <- ggplot(data_loan, aes_string(x = 1, y = cont_data_name )) + 
+    geom_boxplot() +
+    labs(x = "", 
+         y = clean_columns_names[cont_data_name])
+  print(cont_data_name)
+  print(plt)
+}
+```
+
+## Extreme Values Filtering 
+
+We then filtered them and made sure that the resulting data had indeed less extreme values. 
+
+```{r}
+# filter the 99% percentile 
+for (cont_data_name in cont_data_names){
+  threshold <- quantile(data_loan[[cont_data_name]], probs = 0.99)
+  print(cont_data_name)
+  print(threshold)
+  extreme_data <- filter(data_loan, !!sym(cont_data_name) >= threshold)
+  data_loan <- filter(data_loan, !!sym(cont_data_name) < threshold)
+}
+
+# Check the new boxplots 
+for (cont_data_name in cont_data_names){
+  plt <- ggplot(data_loan, aes_string(x = 1, y = cont_data_name )) + 
+    geom_boxplot() +
+    labs(x = "", 
+         y = clean_columns_names[cont_data_name])
+  print(cont_data_name)
+  print(plt)
+}
+```
+
+## Graphical Analysis Functions 
+
+```{r}
+# Plot functions ---------------------------------------------------------------
+
+# Categorical variables functions ..............................................
+
+# Plot the default probability for each categorical variable 
+plot_cat_relative_default <- function(data, factor_name) {
+  summary <- data |>
+    group_by(across({{ factor_name }}))|>
+    summarize(default_probability = mean(loan_status=="Default"), 
+              n = n()) |>
+    ungroup()
+  
+  plt <- ggplot(summary,  aes_string(x = "default_probability", y = 
+                                       factor_name))+
+    geom_point()+ 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  print(plt)
+}
+
+# Plot the categorical variables with the default and the paid debt 
+plot_cat_default <- function(data, factor_name) {
+  plt <- ggplot(data, aes_string(x = factor_name, fill = "loan_status"))+
+    geom_bar()
+  print(plt)
+}
+
+# Continuous variables functions ...............................................
+
+# Plot the continuous variable histogram of what is paid and what is defaulted 
+plot_cont_default_n_paid <- function(data, column) {
+  plt <- ggplot(data, aes_string(x = column, fill = "loan_status"))+
+    geom_histogram()
+  print(plt)
+}
+
+# Plot the defaults for continuous value in absolute terms  
+plot_cont_default <- function(data, column) {
+  
+  default_data <- filter(data, loan_status == "Default")
+  plt <- ggplot(default_data, aes_string(x = column))+
+    geom_histogram()
+  print(plt)
+}
+
+# Plot the percentage of default for each continuous data 
+plot_cont_default_percentage <- function(data, column) {
+
+  # break down the data in 30 bins, find the percentage of default for each bin
+  percentage <- data |>
+    group_by(cut(!!sym(column), breaks = 30)) |>
+    summarize(default_percentage = mean(loan_status == "Default")) |>
+    ungroup()
+  
+  # rename the column for plotting 
+  colnames(percentage) <- c("bins", "default_percentage")
+  
+  # create a vector for the x-axis 
+  min_x <- min(data[[column]])
+  max_x <- max(data[[column]])
+  x_axis <- seq(from = min_x, to = max_x, length.out = nrow(percentage))
+  
+  # add the x axis to the percentage 
+  percentage$x_axis <- x_axis 
+  
+  # plot the percentage 
+  plt <- ggplot(percentage, aes(x = x_axis, y = default_percentage)) +
+    geom_bar(stat = "identity") + 
+    labs(x = clean_columns_names[column], 
+         y = "Percentage of default")
+  print(plt)
+}
+```
+
+## Categorical Data Plotting 
+
+```{r}
+cat_data_names <- c("term", "grade", "sub_grade", "purpose", 
+                    "years_employment", "us_state")
+
+# General view 
+for (cat_data in cat_data_names){
+  plot_cat_default(data_loan, cat_data)
+}
+
+# Probability of default 
+for (cat_data in cat_data_names){
+  plot_cat_relative_default(data_loan, cat_data)
+}
+```
+
+## Continuous Data Plotting 
+
+```{r}
+# General view 
+for (cont_data in cont_data_names){
+  plot_cont_default_n_paid(data_loan, cont_data)
+}
+
+# Number of defaults 
+for (cont_data in cont_data_names){
+  plot_cont_default(data_loan, cont_data)
+}
+
+# Default percentage 
+for (cont_data in cont_data_names) {
+  plot_cont_default_percentage(data_loan, cont_data)
+}
+```
+
+## State Analysis 
+
+```{r}
+# Get a feel of the data by states 
+
+state_data <- data_loan |>
+  group_by(across("us_state"))|>
+  summarize(default_probability = mean(loan_status=="Default"), 
+            n = n(), 
+            mean_income = mean(annual_inc)) |>
+  ungroup()
+
+colnames(state_data)[colnames(state_data) == "us_state"] <- "state"
+
+plot_usmap(data = state_data, values= "default_probability")+
+  scale_fill_continuous() + 
+  labs(title = "Default Probability by US States") +
+  theme(legend.position = "right")
+
+plot_usmap(data = state_data, values= "mean_income")+
+  scale_fill_continuous() + 
+  labs(title = "Mean Income by US States") +
+  theme(legend.position = "right")
+
+```
+
+## Checking For the Correlation 
+
+```{r}
+# Checking the correlation -- --------------------------------------------------
+
+cont_data_names <- c("loan_amnt", "int_rate", "annual_inc", "total_pymnt", 
+                     "loan_per_income", "open_acc", "total_acc")
+
+# check for redundant data with correlation
+correlation_matrix <- cor(data_loan[cont_data_names])
+
+# Create a heatmap to visualize the resulting correlation matrix. 
+ggplot(data = data.frame(x = rep(colnames(correlation_matrix), each = 
+                                   ncol(correlation_matrix)),
+                         y = rep(colnames(correlation_matrix), times = 
+                                   ncol(correlation_matrix)),
+                         corr = as.vector(correlation_matrix))) +
+  geom_tile(aes(x = x, y = y, fill = corr)) +
+  scale_fill_gradient(low = "blue", high = "red") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Modelling --------------------------------------------------------------------
+
+# Prepare the data   
+x_data <- data_loan[, -which(names(data_loan) == "loan_status")]
+y_data <- as.numeric(data_loan$loan_status)
+
+# Compute the model using GLMnet 
+model <- glmnet(x=x_data, y=y_data, alpha = 1)
+
+# Model evaluation -------------------------------------------------------------
+
+# Create coefficient path plot
+plot(model, xvar = "lambda")
+
+plot(model)
+```
