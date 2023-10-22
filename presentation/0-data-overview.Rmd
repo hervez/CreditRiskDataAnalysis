@@ -4,7 +4,7 @@ author: "Herve Zumbach, Valentin Frezza"
 date: 2023-10-20
 ---
 
-# Data Loading and Tidying 
+## Data Loading and Tidying 
 
 ```{r}
 # Load the libraries for our analysis
@@ -35,7 +35,8 @@ clean_columns_names <- c(
   "years_employment" = "Years of employment", 
   "out_prncp" = "Out principal", 
   "loan_per_income" = "Loan per income", 
-  "funded_amnt" = "Funded amount"
+  "funded_amnt" = "Funded amount", 
+  "politics" = "Political party"
 )
 
 ordered_factor = c(
@@ -200,9 +201,9 @@ for (cont_data_name in cont_data_names){
   grid.arrange(plt_1, plt_2, ncol = 2)
 }
 ```
-# Data Analysis
+## Data Analysis
 
-In this section, we foccus on getting a good understanding of our data through visual representation. 
+In this section, we focus on getting a good understanding of our data through visual representation. 
 Due to the large amount of columns in our data set, we choose an approach based on looping to get through the data. 
 
 ## Graphical Analysis Functions 
@@ -384,7 +385,7 @@ for (cont_data in cont_data_names) {
 }
 ```
 
-# Political Analysis 
+## Political Analysis 
 
 In this part, we want to understand the differences between Republicans and Democrats.
 
@@ -407,7 +408,8 @@ plot_cat_pol_default <- function(data, factor_name) {
   plt <- ggplot(data, aes_string(x = factor_name, fill = "politics"))+
     geom_bar(position = "dodge")+ 
     labs(x = clean_columns_names[factor_name], 
-         y = "Count") + 
+         y = "Count", 
+         fill = clean_columns_names["politics"]) + 
     theme(legend.position = "bottom") +
     scale_fill_manual(values = c("REP" = "red", "DEM" = "blue")) + 
     theme_minimal() + 
@@ -435,7 +437,8 @@ plot_cat_pol_relative_default <- function(data, factor_name) {
   plt <- ggplot(summary, aes(x = !!sym(factor_name), y =default_probability, fill=politics))+ 
     geom_bar(stat = "identity", position = "dodge") + 
     labs(x = clean_columns_names[factor_name], 
-         y = "Count") + 
+         y = "Probability of default", 
+         fill = clean_columns_names["politics"]) + 
     theme(legend.position = "bottom") +
     scale_fill_manual(values = c("REP" = "red", "DEM" = "blue")) + 
     theme_minimal() + 
@@ -476,7 +479,9 @@ plot_density_pol <- function(data, factor_name){
     annotate("text", x = mean_rep + rep_x_pos, y = 0.1,
               label = round(mean_rep, 2), 
               color = "red", size = 4, vjust = 0) +
-    labs(x = clean_columns_names[factor_name],y="Density") +
+    labs(x = clean_columns_names[factor_name],
+         y="Density", 
+         fill = clean_columns_names["politics"]) +
     theme_minimal() + 
     scale_color_manual(values = c("blue", "red"))
 
@@ -492,7 +497,8 @@ plot_cont_pol <- function(data, column) {
     theme_minimal() + 
     scale_fill_manual(values = c("REP" = "red", "DEM" = "blue")) + 
     labs(x = clean_columns_names[column], 
-         y = "Count")
+         y = "Count", 
+         fill = clean_columns_names["politics"])
     
   print(plt)
 }
@@ -536,7 +542,7 @@ for (cont_data in cont_data_names){
 }
 ```
 
-# Modelling 
+## Modelling 
 
 In this part, we foccus on modelling our data with the use of the glmnet library. 
 
