@@ -481,7 +481,7 @@ plot_density_pol <- function(data, factor_name){
               color = "red", size = 4, vjust = 0) +
     labs(x = clean_columns_names[factor_name],
          y="Density", 
-         fill = clean_columns_names["politics"]) +
+         color =  clean_columns_names["politics"]) +
     theme_minimal() + 
     scale_color_manual(values = c("blue", "red"))
 
