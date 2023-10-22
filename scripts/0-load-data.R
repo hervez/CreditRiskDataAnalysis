@@ -2,9 +2,11 @@ library(dplyr)
 library(stringr)
 library(ggplot2)
 library(gridExtra)
+library(viridis)
 
 # Graphical analysis parameters ------------------------------------------------
 clean_columns_names <- c(
+  "term" = "Term", 
   "loan_amnt" = "Loan amount", 
   "int_rate" = "Interest rate", 
   "grade" = "Grade", 
@@ -16,9 +18,20 @@ clean_columns_names <- c(
   "open_acc" = "Open account", 
   "total_acc" = "Total account", 
   "total_pymnt" = "Total payment", 
-  "years_of_employment" = "Years of employment", 
+  "years_employment" = "Years of employment", 
   "out_prncp" = "Out principal", 
-  "loan_per_income" = "Loan per income"
+  "loan_per_income" = "Loan per income", 
+  "funded_amnt" = "Funded amount"
+)
+
+ordered_factor = c(
+  "term" = FALSE,
+  "grade" = TRUE,
+  "sub_grade" = TRUE,
+  "purpose" = FALSE, 
+  "years_employment" = TRUE, 
+  "us_state" = FALSE, 
+  "politics" = FALSE
 )
 
 # data_loan Loading ------------------------------------------------------------
@@ -117,10 +130,11 @@ cont_data_names <- c("loan_amnt", "int_rate", "annual_inc", "total_pymnt",
 # Get a representation of the extremes values with some boxplots 
 for (cont_data_name in cont_data_names){
   plt <- ggplot(data_loan, aes_string(x = 1, y = cont_data_name )) + 
-    geom_boxplot() +
-    labs(x = "", 
-         y = clean_columns_names[cont_data_name])
-  print(cont_data_name)
+    geom_boxplot(outlier.colour = "red",  outlier.shape = 1) +
+    theme_minimal() + 
+    labs(x = clean_columns_names[cont_data_name], 
+         y = "")
+  
   print(plt)
 }
 
@@ -136,9 +150,52 @@ for (cont_data_name in cont_data_names){
 # Check the new boxplots 
 for (cont_data_name in cont_data_names){
   plt <- ggplot(data_loan, aes_string(x = 1, y = cont_data_name )) + 
-    geom_boxplot() +
-    labs(x = "", 
-         y = clean_columns_names[cont_data_name])
-  print(cont_data_name)
-  print(plt)
+    geom_boxplot(outlier.colour = "red",  outlier.shape = 1) +
+    theme_minimal()
+    labs(x = clean_columns_names[cont_data_name], 
+         y = "")
+
 }
+
+# Create the data frame for the dashboard --------------------------------------
+
+data_states <- data_loan |> 
+  group_by(across(us_state))|> 
+  summarize(default_probability = mean(loan_status=="Default"), 
+          mean_income = mean(annual_inc), 
+          mean_int_rate = mean(int_rate), 
+          mean_loan = mean(loan_amnt), 
+          mean_loan_per_inc = mean(loan_per_income), 
+          n_data = n()) |> 
+  ungroup()
+
+data_purpose <- data_loan |> 
+  group_by(across(purpose))|> 
+  summarize(default_probability = mean(loan_status=="Default"), 
+            mean_income = mean(annual_inc), 
+            mean_int_rate = mean(int_rate), 
+            mean_loan = mean(loan_amnt), 
+            mean_loan_per_inc = mean(loan_per_income),
+            n_default = sum(loan_status == "Default"), 
+            n_data = n()) |> 
+  ungroup()
+
+data_grade <- data_loan |> 
+  group_by(across(sub_grade))|> 
+  summarize(default_probability = mean(loan_status=="Default"), 
+            mean_income = mean(annual_inc), 
+            mean_int_rate = mean(int_rate), 
+            mean_loan = mean(loan_amnt), 
+            mean_loan_per_inc = mean(loan_per_income),
+            n_default = sum(loan_status == "Default"), 
+            n_data = n()) |> 
+    ungroup()
+
+data_grade <- mutate(data_grade, grade = substr(sub_grade, 1, 1))
+
+# Save the data ----------------------------------------------------------------
+
+write.csv(data_loan, file = "data/data_loan.csv", row.names = FALSE)
+write.csv(data_states, file = "data/data_states.csv", row.names = FALSE)
+write.csv(data_purpose, file = "data/data_purpose.csv", row.names = FALSE)
+write.csv(data_grade, file = "data/data_grade.csv", row.names = FALSE)

@@ -1,0 +1,176 @@
+---
+title: "Loan Default Analysis"
+author: "Herve Zumbach, Valentin Frezza"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    social: menu
+    source_code: embed
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(highcharter)
+library(dplyr)
+library(viridisLite)
+# library(forecast)
+library(treemap)
+library(arules)
+library(datasets)
+
+thm <- 
+  hc_theme(
+    colors = c("#1a6ecc", "#434348", "#90ed7d"),
+    chart = list(
+      backgroundColor = "transparent",
+      style = list(fontFamily = "Source Sans Pro")
+    ),
+    xAxis = list(
+      gridLineWidth = 1
+    )
+  )
+
+data_loan <- read.csv("../data/data_loan.csv")
+
+```
+
+Column {.tabset data-width=650}
+-----------------------------------------------------------------------
+
+### Default Probability by States 
+
+```{r, fig.keep='none'}
+data("usgeojson")
+data_states <- read.csv("../data/data_states.csv")
+
+n <- 4
+colstops <- data.frame(
+  q = 0:n/n,
+  c = substring(viridis(n + 1), 0, 7)) %>%
+  list_parse2()
+
+highchart() %>%
+  hc_add_series_map(usgeojson, data_states, name = "Default",
+                    value = "default_probability", joinBy = c("postalcode", "us_state"),
+                    dataLabels = list(enabled = TRUE,
+                                      format = '{point.properties.postalcode}')) %>%
+  hc_colorAxis(stops = colstops) %>%
+  hc_legend(valueDecimals = 0, valueSuffix = "%") %>%
+  hc_mapNavigation(enabled = TRUE) %>%
+  hc_add_theme(thm)
+```
+### Mean Income by State 
+```{r, fig.keep='none'}
+highchart() %>%
+  hc_add_series_map(usgeojson, data_states, name = "Income",
+                    value = "mean_income", joinBy = c("postalcode", "us_state"),
+                    dataLabels = list(enabled = TRUE,
+                                      format = '{point.properties.postalcode}')) %>%
+  hc_colorAxis(stops = colstops) %>%
+  hc_legend(valueDecimals = 0, valueSuffix = "%") %>%
+  hc_mapNavigation(enabled = TRUE) %>%
+  hc_add_theme(thm)
+```
+
+### Mean Interest Rate by State 
+```{r, fig.keep='none'}
+highchart() %>%
+  hc_add_series_map(usgeojson, data_states, name = "InterestRate",
+                    value = "mean_int_rate", joinBy = c("postalcode", "us_state"),
+                    dataLabels = list(enabled = TRUE,
+                                      format = '{point.properties.postalcode}')) %>%
+  hc_colorAxis(stops = colstops) %>%
+  hc_legend(valueDecimals = 0, valueSuffix = "%") %>%
+  hc_mapNavigation(enabled = TRUE) %>%
+  hc_add_theme(thm)
+```
+
+### Mean Loan by State 
+```{r, fig.keep='none'}
+highchart() %>%
+  hc_add_series_map(usgeojson, data_states, name = "Loan",
+                    value = "mean_loan", joinBy = c("postalcode", "us_state"),
+                    dataLabels = list(enabled = TRUE,
+                                      format = '{point.properties.postalcode}')) %>%
+  hc_colorAxis(stops = colstops) %>%
+  hc_legend(valueDecimals = 0, valueSuffix = "%") %>%
+  hc_mapNavigation(enabled = TRUE) %>%
+  hc_add_theme(thm)
+```
+### Mean Loan per Income by State 
+```{r, fig.keep='none'}
+highchart() %>%
+  hc_add_series_map(usgeojson, data_states, name = "PerIncome",
+                    value = "mean_loan_per_inc", joinBy = c("postalcode", "us_state"),
+                    dataLabels = list(enabled = TRUE,
+                                      format = '{point.properties.postalcode}')) %>%
+  hc_colorAxis(stops = colstops) %>%
+  hc_legend(valueDecimals = 0, valueSuffix = "%") %>%
+  hc_mapNavigation(enabled = TRUE) %>%
+  hc_add_theme(thm)
+```
+
+### Number of Observations by State 
+```{r}
+highchart() %>%
+  hc_add_series_map(usgeojson, data_states, name = "N",
+                    value = "n_data", joinBy = c("postalcode", "us_state"),
+                    dataLabels = list(enabled = TRUE,
+                                      format = '{point.properties.postalcode}')) %>%
+  hc_colorAxis(stops = colstops) %>%
+  hc_legend(valueDecimals = 0, valueSuffix = "%") %>%
+  hc_mapNavigation(enabled = TRUE) %>%
+  hc_add_theme(thm)
+```
+
+Column {.tabset data-width=350}
+-----------------------------------------------------------------------
+
+### Number of Loan per Purpose 
+
+```{r, fig.keep='none'}
+data_purpose <- read.csv("../data/data_purpose.csv")
+
+tm <- treemap(data_purpose, index = c("purpose"),
+              vSize = "n_data", vColor = "n_data",
+              type = "value", palette = rev(viridis(6)))
+
+hctreemap(tm, allowDrillToNode = TRUE, layoutAlgorithm = "squarified") %>% 
+  hc_add_theme(thm)
+```
+### Number of Default per Purpose  
+
+```{r, fig.keep='none'}
+data_purpose <- read.csv("../data/data_purpose.csv")
+
+tm <- treemap(data_purpose, index = c("purpose"),
+              vSize = "n_default", vColor = "n_default",
+              type = "value", palette = rev(viridis(6)))
+
+hctreemap(tm, allowDrillToNode = TRUE, layoutAlgorithm = "squarified") %>% 
+  hc_add_theme(thm)
+```
+
+### Number of Loan per Grade
+
+```{r, fig.keep='none'}
+data_grade <- read.csv("../data/data_grade.csv")
+
+tm <- treemap(data_grade, index = c("grade", "sub_grade"),
+              vSize = "n_data", vColor = "n_data",
+              type = "value", palette = rev(viridis(6)))
+
+hctreemap(tm, allowDrillToNode = TRUE, layoutAlgorithm = "squarified") %>% 
+  hc_add_theme(thm)
+```
+
+### Number of Default per Grade
+
+```{r, fig.keep='none'}
+tm <- treemap(data_grade, index = c("grade", "sub_grade"),
+              vSize = "n_default", vColor = "n_default",
+              type = "value", palette = rev(viridis(6)))
+
+hctreemap(tm, allowDrillToNode = TRUE, layoutAlgorithm = "squarified") %>% 
+  hc_add_theme(thm)
+```
