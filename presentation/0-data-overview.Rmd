@@ -1,11 +1,22 @@
 ---
-title: "Data Loan Default Analysis"
+title: "U.S. Loan Default Analysis"
 author: "Herve Zumbach, Valentin Frezza" 
 date: 2023-10-20
 ---
 
+## Introduction 
+
+The data for this project comes from: https://www.kaggle.com/datasets/ranadeep/credit-risk-dataset/data. 
+The ids used in the data set seems to come from https://lendingclub.com, a U.S. financial services company specialized in peer-to-peer lending. 
+The authenticity of the data could not be established; the size of the data set would indicate that maybe the data was automatically generated, however the reference to actual lendingclub ids seems to contradict this. 
+The website for lendingclub does not offer data about its clients. 
+
+The main research question tackled in this data analysis was which factor affected the probability of default the most. 
+To answer it, automatic visualization of the data was used in large scale so as to understand quickly and efficiently which variable had the most effect on the default probability. 
+
 ## Data Loading and Tidying 
 
+To begin our analysis, we started by downloading the necessary libraries. In addition we also generated some vectors for clean graphical representation of the data. 
 ```{r}
 # Load the libraries for our analysis
 library(dplyr)
@@ -52,6 +63,9 @@ ordered_factor = c(
 
 ## First impression
 
+Looking at the data, the first issue was the size of the data set in terms  of number of observations as well as variables. 
+With 74 columns and 887'379 rows, our data set was simply to large for fast computation and made choosing the correct variables for our analysis challenging. 
+
 ```{r}
 # Load the dataset
 data_loan <- read.csv("../data/loan.csv")
@@ -62,7 +76,7 @@ kable(summary(data_loan))
 
 ## First filter 
 
-To simplify computation and make the data set manageable, we only look at the fully paid or defaulted loans making the data set go from 8'000'000 entries to 200'000. 
+To simplify computation and make the data set manageable, we only look at the fully paid or defaulted loans making the data set go from 878'379 entries to 208'942. 
 In addition, we also reduce the columns to 15 to only keep pertinent entries. 
 
 ```{r}
@@ -81,7 +95,8 @@ kable(summary(data_loan))
 
 ## Second Filter 
 
-We remove all the entries with no value for the number of years of employment: 
+We also remove all the entries with no value for the number of years of employment: 
+
 ```{r}
 # Counting number of cells without any value for the variable year of employment
 data_loan |>
@@ -96,7 +111,8 @@ data_loan <- filter(data_loan, data_loan$emp_length != "n/a")
 
 ## Adding new entries 
 
-We add the columns politics and loan_per_income
+We add the columns politics and loan_per_income. 
+The columns politics represent wether the state of the debtor is republican or democrat whereas the loan_per_income column represent the amount of loan divided by the yearly income of the debtor. 
 
 ```{r}
 # Creation of the loan_per_income column
@@ -157,7 +173,7 @@ A few of the values in our data set are too extreme for proper analysis, so we d
 
 ## Extreme Values visualization
 
-To do so, we filter the 99th quantile of the data, 
+To do so, we filter the 99th quantile of the data: 
 
 ```{r}
 # Define the vector of continuous values 
@@ -178,7 +194,7 @@ for (cont_data_name in cont_data_names){
 
 ## Extreme Values Filtering 
 
-We then check how the filter affected our data with some boxplots. 
+We then check how the filter affected our data with some boxplots: 
 
 ```{r}
 # Get a representation of the extremes values filter with some boxplots 
@@ -201,6 +217,7 @@ for (cont_data_name in cont_data_names){
   grid.arrange(plt_1, plt_2, ncol = 2)
 }
 ```
+
 ## Data Analysis
 
 In this section, we focus on getting a good understanding of our data through visual representation. 
@@ -343,7 +360,7 @@ plot_cont_default_percentage <- function(data, column) {
 
 ## Categorical Data Plotting 
 
-We then loop through all the categorical data to understand how they affect the probability of default. 
+We then loop through all the categorical data to understand how they affect the probability of default looking first at the absolute number of observation and then at the relative default probability of each categorical data. 
 
 ```{r}
 # Categorical Data plotting ....................................................
@@ -365,6 +382,8 @@ for (cat_data in cat_data_names){
 ## Continuous Data Plotting 
 
 We also loop through all the continuous data to see how they affect the probability of default. 
+To do so, the continuous data were put into 30 bins of equal length. 
+The number of default and of debt repaid was then plotted as well as the relative default probability for each bin. 
 
 ```{r}
 # Continuous Data plotting .....................................................
@@ -594,3 +613,14 @@ model <- glmnet(x=x_data, y=y_data, alpha = 1)
 plot(model)
 
 ```
+## Analysis and Conclusion
+
+As was shown in our results, most of the categorical and continuous data showed an influence on the default probability. 
+It is however important to note the influence of the number of data point for the certainty of the probability obtained from them. 
+For the categorical data, the clearest influence was that of the grade of the loan, for the continuous data, we can note the influence of the loan per income variable or that of the interest rate. 
+
+Interestingly, the politic of the state from which each debtor came from seems to have an influence on the default probability as well. 
+
+For the modeling part, many questions remain unanswered and the GLM analysis proved very tricky to use and its accuracy hard to measure. 
+
+Further work could focus on including the variance of each probability estimate as well as an improved modeling approach. 
